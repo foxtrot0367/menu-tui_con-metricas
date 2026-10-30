@@ -125,6 +125,25 @@ Las alertas se guardan en `/var/log/caddy_alerts.log` y las IPs maliciosas se bl
 
 ---
 
+## 📊 Métrica Única de Ciberseguridad
+
+Para visualizar todo el panel en **una sola métrica** (puntaje 0-100):
+
+```bash
+python cybersecurity_metric.py            # gauge + desglose en terminal
+python cybersecurity_metric.py --json     # salida JSON (SIEM/Prometheus/Grafana)
+python cybersecurity_metric.py --demo     # simula entorno totalmente protegido
+python cybersecurity_metric.py --html metric_dashboard.html
+```
+
+La métrica agrega los 21 controles NIST CSF/MSPI en un único score global
+con desglose por función (Govern, Identify, Protect, Detect, Respond, Recover).
+
+Para verificar qué falta para llegar a 100/100 en el servidor:
+```bash
+sudo ./check_readiness.sh
+```
+
 ## 📁 Estructura del Proyecto
 
 ```text

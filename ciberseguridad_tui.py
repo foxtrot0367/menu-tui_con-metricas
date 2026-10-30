@@ -12,6 +12,11 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Header, Footer, Button, Static, RichLog, TabbedContent, TabPane
 
+try:
+    from cybersecurity_metric import compute as compute_metric
+except Exception:
+    compute_metric = None
+
 # Mapeo de scripts con sus archivos y descripciones NIST/MSPI
 SCRIPTS_CONFIG = {
     "waf": {
@@ -49,6 +54,12 @@ SCRIPTS_CONFIG = {
         "script": "autodiagnostico.sh",
         "nist": "GOBERNAR (Govern)",
         "desc": "Comprueba disponibilidad de la Base de Datos (puerto 5432) y respuesta HTTP del WAF."
+    },
+    "readiness": {
+        "name": "7. Verificación Readiness 100/100",
+        "script": "check_readiness.sh",
+        "nist": "GOBERNAR (Govern)",
+        "desc": "Verifica los 21 controles y calcula el score. Muestra qué falta para llegar a 100/100."
     }
 }
 
@@ -154,6 +165,12 @@ class CybersecurityTUI(App):
                         yield RichLog(id="console_log", highlight=True, markup=True)
                     with TabPane("Matriz de Marco NIST CSF"):
                         yield Static(self._build_nist_matrix())
+                    with TabPane("Métrica Única"):
+                        yield Static("Calculando métrica...", id="metric-view")
+                        yield Button("Actualizar Métrica", id="btn_metric", variant="success")
+                    with TabPane("Readiness 100/100"):
+                        yield RichLog(id="readiness_log", highlight=True, markup=True)
+                        yield Button("Ejecutar Verificación Readiness", id="btn_readiness", variant="primary")
         yield Footer()
 
     def _build_nist_matrix(self) -> str:
@@ -181,12 +198,121 @@ class CybersecurityTUI(App):
   • Creación de respaldos comprimidos de configuración con generación y validación de firma SHA256.
         """
 
+    def on_mount(self) -> None:
+        try:
+            self.refresh_metric()
+        except Exception:
+            pass
+        try:
+            if compute_metric is not None:
+                r = compute_metric()
+                self.query_one("#status-bar", Static).update(
+                    f"[bold]Score: {r['score']}/100 ({r['status']})[/bold] — Listo para recibir instrucciones."
+                )
+        except Exception:
+            pass
+        # Auto-refresh del score cada 15 segundos
+        try:
+            self.set_interval(15, self._auto_refresh_score)
+        except Exception:
+            pass
+
+    def _auto_refresh_score(self) -> None:
+        if compute_metric is None:
+            return
+        try:
+            r = compute_metric()
+            # Solo actualizar si no hay una ejecución en curso (barra no contiene "Ejecutando")
+            status = self.query_one("#status-bar", Static)
+            current = str(status.renderable) if hasattr(status, "renderable") else ""
+            if "Ejecutando" in current or "⏳" in current:
+                return
+            status.update(f"[bold]Score: {r['score']}/100 ({r['status']})[/bold]")
+            # Refrescar también la pestaña de métrica
+            try:
+                self.refresh_metric()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
+        if button_id == "btn_metric":
+            self.refresh_metric()
+            return
+        if button_id == "btn_readiness":
+            await self.run_readiness_task()
+            return
         if button_id.startswith("btn_"):
             script_key = button_id.replace("btn_", "")
             if script_key in SCRIPTS_CONFIG:
                 await self.execute_script_task(script_key)
+
+    async def run_readiness_task(self) -> None:
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_readiness.sh")
+        log = self.query_one("#readiness_log", RichLog)
+        status = self.query_one("#status-bar", Static)
+        log.clear()
+        status.update("[bold yellow]⏳ Ejecutando: Verificación Readiness 100/100...[/bold yellow]")
+        is_windows = platform.system() == "Windows"
+        if is_windows:
+            cmd = ["cmd.exe", "/c", f"echo [WINDOWS ENV] Simulando ejecución de check_readiness.sh & type \"{script_path}\""]
+        else:
+            cmd = ["bash", script_path]
+        try:
+            process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                log.write(line.decode('utf-8', errors='replace').rstrip())
+            stderr_data = await process.stderr.read()
+            if stderr_data:
+                log.write(f"[bold red][STDERR][/bold red]\n{stderr_data.decode('utf-8', errors='replace')}")
+            await process.wait()
+            if process.returncode == 0:
+                try:
+                    if compute_metric is not None:
+                        r = compute_metric()
+                        status.update(f"[bold green]✔ Readiness verificado — Score: {r['score']}/100 ({r['status']})[/bold green]")
+                    else:
+                        status.update("[bold green]✔ Readiness verificado[/bold green]")
+                except Exception:
+                    status.update("[bold green]✔ Readiness verificado[/bold green]")
+            else:
+                status.update(f"[bold red]❌ Error ({process.returncode})[/bold red]")
+        except Exception as e:
+            log.write(f"[bold red][EXCEPCIÓN] {str(e)}[/bold red]")
+            status.update("[bold red]❌ Excepción[/bold red]")
+
+    def refresh_metric(self) -> None:
+        view = self.query_one("#metric-view", Static)
+        if compute_metric is None:
+            view.update("[red]No se pudo importar cybersecurity_metric.py[/red]")
+            return
+        try:
+            result = compute_metric()
+            lines = [
+                f"[bold]Score global: {result['score']}/100 — {result['status']}[/bold]",
+                "",
+            ]
+            for cat, v in result["categories"].items():
+                bar = "█" * (v["score"] // 5) + "░" * (20 - v["score"] // 5)
+                lines.append(f"{cat:<10} {bar} {v['score']}% ({v['passed']}/{v['count']})")
+            lines.append("")
+            for ch in result["checks"]:
+                mark = "[green]✓[/green]" if ch["passed"] else "[red]✗[/red]"
+                lines.append(f"{mark} {ch['id']:<10} {ch['name']} (+{ch['weight']})")
+            view.update("\n".join(lines))
+            try:
+                self.query_one("#status-bar", Static).update(
+                    f"[bold]Score: {result['score']}/100 ({result['status']})[/bold]"
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            view.update(f"[red]Error calculando métrica: {e}[/red]")
 
     async def execute_script_task(self, script_key: str):
         config = SCRIPTS_CONFIG[script_key]
@@ -229,7 +355,14 @@ class CybersecurityTUI(App):
 
             if process.returncode == 0:
                 log.write(f"\n[bold green][✓] {config['name']} procesado correctamente.[/bold green]")
-                status.update(f"[bold green]✔ Finalizado: {config['name']}[/bold green]")
+                score_txt = ""
+                if compute_metric is not None:
+                    try:
+                        r = compute_metric()
+                        score_txt = f" — Score: {r['score']}/100 ({r['status']})"
+                    except Exception:
+                        pass
+                status.update(f"[bold green]✔ Finalizado: {config['name']}{score_txt}[/bold green]")
             else:
                 log.write(f"\n[bold red][✗] Código de retorno: {process.returncode}[/bold red]")
                 status.update(f"[bold red]❌ Error en ejecución ({process.returncode})[/bold red]")
@@ -242,7 +375,14 @@ class CybersecurityTUI(App):
         """Acción para limpiar la pantalla de logs (Tecla 'c')."""
         log = self.query_one("#console_log", RichLog)
         log.clear()
-        self.query_one("#status-bar", Static).update("Consola de logs limpiada.")
+        score_txt = ""
+        if compute_metric is not None:
+            try:
+                r = compute_metric()
+                score_txt = f" | Score: {r['score']}/100"
+            except Exception:
+                pass
+        self.query_one("#status-bar", Static).update(f"Consola de logs limpiada.{score_txt}")
 
     async def action_run_all_diag(self) -> None:
         """Acción rápida para ejecutar el autodiagnóstico (Tecla 'd')."""

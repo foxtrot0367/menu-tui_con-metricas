@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Métrica Única de Ciberseguridad</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:40px; }
+  .card { max-width:640px; margin:0 auto; background:#161b22; border:1px solid #30363d; border-radius:16px; padding:32px; text-align:center; }
+  h1 { font-size:20px; margin:0 0 24px; color:#58a6ff; }
+  .gauge { position:relative; width:220px; height:220px; margin:0 auto 16px; }
+  svg { transform:rotate(-90deg); }
+  .score { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .score .num { font-size:56px; font-weight:700; color:#ef4444; }
+  .score .lbl { font-size:14px; color:#8b949e; }
+  .status { font-size:22px; font-weight:700; color:#ef4444; margin:8px 0 24px; }
+  table { width:100%; border-collapse:collapse; margin:16px 0; }
+  th,td { padding:8px; border-bottom:1px solid #30363d; text-align:left; }
+  th { color:#8b949e; font-size:12px; text-transform:uppercase; }
+  ul { list-style:none; padding:0; text-align:left; }
+  li { padding:4px 0; font-size:13px; }
+  .ok { color:#22c55e; }
+  .fail { color:#ef4444; }
+  .foot { color:#8b949e; font-size:12px; margin-top:16px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🛡️ Métrica Única de Ciberseguridad (NIST CSF / MSPI)</h1>
+    <div class="gauge">
+      <svg width="220" height="220">
+        <circle cx="110" cy="110" r="90" stroke="#30363d" stroke-width="14" fill="none"/>
+        <circle cx="110" cy="110" r="90" stroke="#ef4444" stroke-width="14" fill="none"
+          stroke-dasharray="565.4861999999999" stroke-dashoffset="424.11465" stroke-linecap="round"/>
+      </svg>
+      <div class="score">
+        <div class="num">25</div>
+        <div class="lbl">/100</div>
+      </div>
+    </div>
+    <div class="status">CRITICO</div>
+    <table>
+      <thead><tr><th>Función NIST</th><th>Score</th><th>Checks</th></tr></thead>
+      <tbody><tr><td>Govern</td><td>40%</td><td>2/5</td></tr><tr><td>Identify</td><td>75%</td><td>3/4</td></tr><tr><td>Protect</td><td>0%</td><td>0/5</td></tr><tr><td>Detect</td><td>0%</td><td>0/3</td></tr><tr><td>Respond</td><td>0%</td><td>0/2</td></tr><tr><td>Recover</td><td>0%</td><td>0/2</td></tr></tbody>
+    </table>
+    <ul><li class='fail'>✗ GOV-DB — Conexión Base de Datos (PostgreSQL) (+5)</li><li class='fail'>✗ GOV-PG — Servicio PostgreSQL activo (+5)</li><li class='ok'>✓ GOV-DOCKER — Servicio Docker activo (+5)</li><li class='fail'>✗ GOV-PGCTR — Contenedor postgres activo (+5)</li><li class='ok'>✓ GOV-DISK — Espacio en disco <90% (+5)</li><li class='ok'>✓ ID-IFACE — Interfaces de red (+5)</li><li class='ok'>✓ ID-PORTS — Puertos en escucha (+5)</li><li class='ok'>✓ ID-FW — Reglas de firewall (+5)</li><li class='fail'>✗ ID-CRITPORTS — Puertos críticos 80/443/5432/8001 (+5)</li><li class='fail'>✗ PR-CADDYCTR — Contenedor Caddy activo (+5)</li><li class='fail'>✗ PR-HTTP — Respuesta HTTP del WAF (+5)</li><li class='fail'>✗ PR-HTTPS — Puerto HTTPS 443 en escucha (+5)</li><li class='fail'>✗ PR-HDR — Cabeceras HSTS + CSP (+5)</li><li class='fail'>✗ PR-APICTR — Contenedor API activo (+5)</li><li class='fail'>✗ DE-TCPD — tcpdump disponible (+4)</li><li class='fail'>✗ DE-F2B — Fail2ban activo (+3)</li><li class='fail'>✗ DE-SENTRY — Contenedor sentry-resend activo (+3)</li><li class='fail'>✗ RS-JAIL — Jail caddy-waf activo (+5)</li><li class='fail'>✗ RS-IPT — Reglas DROP/REJECT (+5)</li><li class='fail'>✗ RC-BACKUP — Respaldo reciente (+5)</li><li class='fail'>✗ RC-SHA — Integridad SHA256 (+5)</li></ul>
+    <div class="foot">Plataforma: Windows · 2026-10-29T20:08:56.195734</div>
+  </div>
+</body>
+</html>

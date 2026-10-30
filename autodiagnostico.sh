@@ -6,32 +6,141 @@ DB_PORT="5432"
 
 echo "=== INICIANDO AUTODIAGNÓSTICO SOAR-LITE ==="
 
-# 1. Conexión a la Base de Datos
-if ! command -v nc &> /dev/null; then
-    echo "[FAIL] 'nc' no está instalado. No se puede verificar la conexión a la BD."
+# ==================================================
+# 1. Verificar netcat
+# ==================================================
+
+if ! command -v nc >/dev/null 2>&1; then
+    echo "[FAIL] netcat (nc) no está instalado."
     exit 1
 fi
-if nc -z -v -w5 $DB_HOST $DB_PORT 2>&1; then
+
+# ==================================================
+# 2. Verificar PostgreSQL
+# ==================================================
+
+if nc -z -w5 "$DB_HOST" "$DB_PORT" >/dev/null 2>&1; then
     echo "[OK] Conexión a Base de Datos de Métricas: EXITOSA"
 else
-    echo "[FAIL] Falla de conexión a la Base de Datos"
-    exit 1
+    echo "[FAIL] Falla de conexión a PostgreSQL"
 fi
 
-# 2. Verificación de servicio Caddy WAF
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ || true)
-if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 403 ]; then
-    echo "[OK] Servicio Web / WAF respondiendo adecuadamente (Status: $HTTP_STATUS)"
+# ==================================================
+# 3. Verificar HTTP
+# ==================================================
+
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost || true)
+
+case "$HTTP_STATUS" in
+    200|301|302|308|403)
+        echo "[OK] Servicio Web / WAF respondiendo (HTTP $HTTP_STATUS)"
+        ;;
+    *)
+        echo "[WARN] Código HTTP inesperado: $HTTP_STATUS"
+        ;;
+esac
+
+# ==================================================
+# 4. Verificar HTTPS
+# ==================================================
+
+if ss -tln | grep -q ':443 '; then
+    echo "[OK] Puerto HTTPS 443 en escucha"
 else
-    echo "[WARN] Código HTTP inesperado: $HTTP_STATUS"
+    echo "[WARN] Puerto HTTPS 443 no detectado"
 fi
 
-# 3. Verificación de HTTPS (:443)
-HTTPS_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost/ || true)
-if [ "$HTTPS_STATUS" -eq 200 ] || [ "$HTTPS_STATUS" -eq 403 ]; then
-    echo "[OK] Servicio HTTPS respondiendo adecuadamente (Status: $HTTPS_STATUS)"
+# ==================================================
+# 5. Verificar Caddy
+# ==================================================
+
+if docker ps --format '{{.Names}}' | grep -q '^caddy$'; then
+    echo "[OK] Contenedor Caddy activo"
 else
-    echo "[WARN] HTTPS no disponible o código inesperado: $HTTPS_STATUS"
+    echo "[WARN] Contenedor Caddy no encontrado"
 fi
 
+# ==================================================
+# 6. Verificar PostgreSQL Service
+# ==================================================
+
+if systemctl is-active --quiet postgresql; then
+    echo "[OK] Servicio PostgreSQL activo"
+else
+    echo "[WARN] Servicio PostgreSQL inactivo"
+fi
+
+# ==================================================
+# 7. Verificar Docker
+# ==================================================
+
+if systemctl is-active --quiet docker; then
+    echo "[OK] Servicio Docker activo"
+else
+    echo "[WARN] Servicio Docker inactivo"
+fi
+
+# ==================================================
+# 8. Contenedores activos
+# ==================================================
+
+echo
+echo "=== CONTENEDORES ACTIVOS ==="
+
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || true
+
+# ==================================================
+# 9. Puertos críticos
+# ==================================================
+
+echo
+echo "=== PUERTOS EN ESCUCHA ==="
+
+ss -tulpn | grep -E ':80|:443|:5432|:8001' || \
+echo "[WARN] No se detectaron puertos críticos"
+
+# ==================================================
+# 10. Uso de disco
+# ==================================================
+
+echo
+echo "=== ESPACIO EN DISCO ==="
+
+df -h /
+
+# ==================================================
+# 11. Uso de memoria
+# ==================================================
+
+echo
+echo "=== MEMORIA RAM ==="
+
+free -h
+
+# ==================================================
+# 12. Carga del sistema
+# ==================================================
+
+echo
+echo "=== CARGA DEL SISTEMA ==="
+
+uptime
+
+# ==================================================
+# 13. Estado de contenedores críticos
+# ==================================================
+
+echo
+echo "=== SERVICIOS SOAR-LITE ==="
+
+for SERVICE in caddy docker-postgres-1 docker-api-1 sentry-resend vulnerablespace
+do
+    if docker ps --format '{{.Names}}' | grep -q "^${SERVICE}$"; then
+        echo "[OK] $SERVICE activo"
+    else
+        echo "[WARN] $SERVICE no encontrado"
+    fi
+done
+
+echo
 echo "=== DIAGNÓSTICO FINALIZADO ==="
